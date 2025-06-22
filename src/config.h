@@ -1,7 +1,8 @@
 // config.h
 #pragma once
 #include <Arduino.h>
-#include <math.h>
+#include "imu.h"
+#include "nrf.h"
 
 extern portMUX_TYPE spinlock;
 extern hw_timer_t *timer;
@@ -16,6 +17,9 @@ constexpr uint8_t MISO_PIN = 13;
 constexpr uint8_t MOSI_PIN = 11;
 constexpr uint8_t MPU_CS = 10;
 constexpr uint8_t MPU_INT = 4;
+constexpr uint8_t NRF_CE = 38;
+constexpr uint8_t NRF_CS = 37;
+constexpr uint8_t NRF_INT = 6;
 constexpr uint8_t AK8963_CNTL1 = 0x0A;
 constexpr uint8_t AK8963_ADDRESS = 0x0C;
 
