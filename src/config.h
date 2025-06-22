@@ -22,24 +22,26 @@ constexpr uint8_t AK8963_ADDRESS = 0x0C;
 constexpr uint8_t GPS_UART_RX = 17;
 constexpr uint8_t GPS_UART_TX = 16;
 
-constexpr uint8_t MOTOR1_PIN =  45;
-constexpr uint8_t MOTOR2_PIN =  48;
-constexpr uint8_t MOTOR3_PIN =  47;
-constexpr uint8_t MOTOR4_PIN =  21;
+constexpr uint8_t MOTOR_PINS[4] = {45, 48, 47, 21}; // Motor pins for ESCs
+constexpr uint8_t MOTOR_CHANNELS[4] = {0, 1, 2, 3}; // PWM channels for ESCs
 
 constexpr uint16_t MIN_PULSE_LENGTH = 1000; // Minimum pulse length in µs
 constexpr uint16_t MAX_PULSE_LENGTH = 2000; // Maximum pulse length in µs
+constexpr uint16_t PWM_PERIOD_US = 20000;   // 1s / 50Hz = 20,000 microseconds = 20 milliseconds
+constexpr uint8_t PWM_FREQ = 50;            // ESCs expect ~50Hz
+constexpr uint8_t PWM_RESOLUTION = 13;      // 13-bit resolution: 0–8191(0~100%) (ESP32 supports maximum 16-bit resolution)
 
-namespace RatePID {
-  constexpr float KP_ROLL  = 0.60f;
-  constexpr float KI_ROLL  = 3.50f;
-  constexpr float KD_ROLL  = 0.03f;
+namespace RatePID
+{
+  constexpr float KP_ROLL = 0.60f;
+  constexpr float KI_ROLL = 3.50f;
+  constexpr float KD_ROLL = 0.03f;
 
   constexpr float KP_PITCH = KP_ROLL;
   constexpr float KI_PITCH = KI_ROLL;
   constexpr float KD_PITCH = KD_ROLL;
 
-  constexpr float KP_YAW   = 2.00f;
-  constexpr float KI_YAW   = 12.0f;
-  constexpr float KD_YAW   = 0.0f;
+  constexpr float KP_YAW = 2.00f;
+  constexpr float KI_YAW = 12.0f;
+  constexpr float KD_YAW = 0.0f;
 }

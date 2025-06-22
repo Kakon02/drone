@@ -14,8 +14,7 @@ extern float AngleRoll, AnglePitch, AngleYaw;                // Euler angles in 
 extern float RateRoll, RatePitch, RateYaw;                   // Gyro rates in degrees per second
 extern float AccXOffset, AccYOffset, AccZOffset;             // Calibration offsets for accelerometer
 extern float GyroPitchOffset, GyroRollOffset, GyroYawOffset; // Calibration offsets for gyro
-
-volatile bool imu_data_ready;
+extern volatile bool imu_data_ready;
 
 // Read/Write functions
 void mpuWriteByte(uint8_t reg, uint8_t data);
