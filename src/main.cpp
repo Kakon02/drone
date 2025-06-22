@@ -1,6 +1,10 @@
 #include <Arduino.h>
+#include <HardwareSerial.h>
 #include <NMEAGPS.h>
 #include <GPSport.h>  // Defines gpsPort
+#include "config.h"
+#include "imu.h"
+#include "PID.h"
 
 NMEAGPS gps;            // Parser
 gps_fix fix;            // Data structure
@@ -13,7 +17,7 @@ void setup() {
   // Configure UART1 for GPS: RX=16, TX=17 (adjust pins as needed)
   GPS_Serial.begin(115200, SERIAL_8N1, 17, 16);
   gpsPort.begin(115200);  // gpsPort is a wrapper defined in GPSport.h
-  Serial.println("NeoGPS + ESP32-S3 started");
+  // Serial.println("NeoGPS + ESP32-S3 started");
 }
 
 void loop() {
@@ -47,4 +51,14 @@ void loop() {
       Serial.println(fix.satellites);
     }
   }
+
+
 }
+
+/* ─────── Local helpers ─────── */
+void attachImuInterrupt()
+{
+    pinMode(MPU_INT, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(MPU_INT), imuISR, RISING);
+}
+
