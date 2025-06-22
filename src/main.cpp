@@ -1,6 +1,12 @@
 #include <Arduino.h>
 #include <NMEAGPS.h>
 #include <GPSport.h> // Defines gpsPort
+#include <HardwareSerial.h>
+#include "nrf.h"
+#include "PID.h"
+#include "imu.h"
+#include "ESCs.h"
+#include "config.h"
 
 NMEAGPS gps;                  // Parser
 gps_fix fix;                  // Data structure
