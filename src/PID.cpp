@@ -11,7 +11,7 @@ float pidCompute(float error,
 
     // ----- I  (trapezoidal integration)
     float iTerm = state.prevIterm + ki * (error + state.prevError) * 0.5f * dt;
-    iTerm = constrain(iTerm, -outMax, outMax);
+    iTerm = constrain(iTerm, -outMax, outMax); // clamp to prevent integral windup
 
     // ----- D
     float dTerm = kd * (error - state.prevError) / dt;

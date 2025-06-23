@@ -1,89 +1,124 @@
+/*********************************************************************
+ *  main.cpp  –  ESP32-S3 “brain” for 4-motor X-configuration quadcopter
+ *               Last edit: 2025-06-23
+ *********************************************************************/
 #include <Arduino.h>
-#include <NMEAGPS.h>
-#include <GPSport.h> // Defines gpsPort
-#include <HardwareSerial.h>
-#include "esp_adc_cal.h"
-#include "nrf.h"
-#include "PID.h"
+#include "config.h" // common pins/const and boardSetup()
 #include "imu.h"
+#include "nrf.h"
 #include "ESCs.h"
-#include "config.h"
+#include "PID.h"
 
-esp_adc_cal_characteristics_t adc_chars; // calibration data holder
-
-NMEAGPS gps;                  // Parser
-gps_fix fix;                  // Data structure
-HardwareSerial GPS_Serial(1); // Use UART1
-void setupAdc();              // ADC setup function
-uint32_t readVoltage();
+// ─────────── Globals ───────────
+static PIDState pidRoll, pidPitch, pidYaw;
+static uint32_t lastRxMicros = 0;                             // fail-safe timer
+inline float mapSym(int16_t pwm, float outMin, float outMax); // helper: map radio input to set-point range
+void pollRadio();                                             // helper: non-blocking read of radio packet
 
 void setup()
 {
   Serial.begin(115200);
   delay(2000);
+  Serial.println(F("==== Quadcopter FC booting ===="));
+  boardSetup();
+  Serial.println(F("Board setup complete"));
+  // ── Peripherals ──────────────────────────
+  setupMPU9250();
+  calibrateIMU();
+  setupMadgwickFilter(); // 90 Hz (configurable)
 
-  // Configure UART1 for GPS: RX=17, TX=16 (adjust pins as needed)
-  GPS_Serial.begin(115200, SERIAL_8N1, 17, 16);
-  gpsPort.begin(115200); // gpsPort is a wrapper defined in GPSport.h
-  setupAdc();
+  setupNRF24L01(); // loads GS addr & listens
+  resetESCs();     // attach motors & zero
+
+  Serial.println(F("Init complete waiting for throttle-low radio signal"));
+
+  while (inputThrottle < 1020 || inputThrottle > 1050)
+  {
+    pollRadio(); // wait for throttle-low signal
+    delay(1000);
+  }
+
+  lastRxMicros = micros();
 }
 
+// ───────────────── main loop (runs as fast as possible ≈2–3 kHz) ───────────────
 void loop()
 {
-  while (gps.available(gpsPort))
+  static uint32_t tPrev = micros(); // tPrev: previous time in µs
+  const uint32_t tNow = micros();
+  const float dt = (tNow - tPrev) * 1e-6f; // seconds
+  tPrev = tNow;
+
+  // ── Sensors ──
+  updateIMUData();  // pulls burst SPI when DRDY ISR set
+  updateAttitude(); // Madgwick → AngleRoll/Pitch/Yaw
+
+  // ── Radio ──
+  pollRadio();
+
+  // ── Fail-safe: if no packet in 300 ms → cut motors ─────────
+  if ((uint32_t)(tNow - lastRxMicros) > 300000)
   {
-    fix = gps.read();
-
-    if (fix.valid.location)
-    {
-      Serial.print("Latitude: ");
-      Serial.print(fix.latitude(), 6);
-      Serial.print(" | Longitude: ");
-      Serial.println(fix.longitude(), 6);
-    }
-
-    if (fix.valid.date && fix.valid.time)
-    {
-      Serial.print("Date: ");
-      Serial.print(fix.dateTime.day);
-      Serial.print("/");
-      Serial.print(fix.dateTime.month);
-      Serial.print("/");
-      Serial.print(fix.dateTime.year);
-      Serial.print(" Time: ");
-      Serial.print(fix.dateTime.hours);
-      Serial.print(":");
-      Serial.print(fix.dateTime.minutes);
-      Serial.print(":");
-      Serial.println(fix.dateTime.seconds);
-    }
-    if (fix.valid.satellites)
-    {
-      Serial.print("Satellites: ");
-      Serial.println(fix.satellites);
-    }
+    sendAllMotors(MIN_PULSE_LENGTH); // ✂ power
+    return;
   }
+
+  // ── Pilot set-points (deg & deg/s) ─────
+  const float desRoll = mapSym(inputRoll, -25.0f, 25.0f); // ±25 °
+  const float desPitch = mapSym(inputPitch, -25.0f, 25.0f);
+  const float desYawRate = mapSym(inputYaw, -150.0f, 150.0f); // ±150 °/s
+  const int baseThrottle = constrain(inputThrottle, MIN_PULSE_LENGTH, MAX_PULSE_LENGTH - 200);
+  // (throttle is 1000–2000 µs, but we reserve 200 µs for PID output)
+
+  //    PID (outer angle loop already skipped; we go
+  //    straight to rate control using Madgwick angles)
+  const float errRoll = desRoll - AngleRoll;
+  const float errPitch = desPitch - AnglePitch;
+  const float errYaw = (desYawRate * DEG_TO_RAD) - RateYaw; // rad/s
+
+  const float rollOut = pidCompute(errRoll,
+                                   RatePID::KP_ROLL, RatePID::KI_ROLL, RatePID::KD_ROLL,
+                                   dt, 500.0f, pidRoll); // ±500 µs overhead
+  const float pitchOut = pidCompute(errPitch,
+                                    RatePID::KP_PITCH, RatePID::KI_PITCH, RatePID::KD_PITCH,
+                                    dt, 500.0f, pidPitch);
+  const float yawOut = pidCompute(errYaw * RAD_TO_DEG, // keep PID gains in deg
+                                  RatePID::KP_YAW, RatePID::KI_YAW, RatePID::KD_YAW,
+                                  dt, 500.0f, pidYaw);
+
+  // ── Motor mix (X-quad, front = motor0) ──────────────
+  int m0 = baseThrottle + pitchOut + rollOut - yawOut;
+  int m1 = baseThrottle + pitchOut - rollOut + yawOut;
+  int m2 = baseThrottle - pitchOut - rollOut - yawOut;
+  int m3 = baseThrottle - pitchOut + rollOut + yawOut;
+
+  // saturate and send to ESCs
+  sendPulse(0, constrain(m0, MIN_PULSE_LENGTH, MAX_PULSE_LENGTH));
+  sendPulse(1, constrain(m1, MIN_PULSE_LENGTH, MAX_PULSE_LENGTH));
+  sendPulse(2, constrain(m2, MIN_PULSE_LENGTH, MAX_PULSE_LENGTH));
+  sendPulse(3, constrain(m3, MIN_PULSE_LENGTH, MAX_PULSE_LENGTH));
 }
 
-void setupAdc()
+inline float mapSym(int16_t pwm, float outMin, float outMax)
 {
-  const adc_unit_t unit = ADC_UNIT_1;
-  const adc_atten_t atten = ADC_ATTEN_DB_11;
-  const uint32_t defaultVref = 1100; // mV
-
-  adc1_config_width(ADC_WIDTH_BIT_12);
-  adc1_config_channel_atten(ADC1_CHANNEL_0, atten); // GPIO1 = ADC1_CH0
-
-  esp_adc_cal_value_t calType = esp_adc_cal_characterize(
-      unit, atten, ADC_WIDTH_BIT_12, defaultVref, &adc_chars);
-
-  Serial.printf("ADC calibration: %s\n",
-                calType == ESP_ADC_CAL_VAL_EFUSE_VREF ? "eFuse Vref" : calType == ESP_ADC_CAL_VAL_EFUSE_TP ? "eFuse Two-Point"
-                                                                                                           : "Default 1.1 V");
+  return (pwm - 1500) * (outMax - outMin) / 500.0f;
 }
 
-uint32_t readVoltage()
+void pollRadio()
 {
-  uint32_t raw = adc1_get_raw(ADC1_CHANNEL_0);
-  return esp_adc_cal_raw_to_voltage(raw, &adc_chars);
+  if (!nrf_data_ready)
+    return;
+
+  // clear flag as quickly as possible
+  portENTER_CRITICAL(&spinlock);
+  nrf_data_ready = false;
+  portEXIT_CRITICAL(&spinlock);
+
+  const int len = radio.getPacketLength();
+  if (radio.readData(nrf_data, len) == RADIOLIB_ERR_NONE)
+  {
+    unpackData(nrf_data);    // updates inputRoll/…
+    lastRxMicros = micros(); // reset fail-safe timer
+  }
+  radio.startReceive(); // back to RX mode
 }

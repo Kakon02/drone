@@ -7,8 +7,8 @@
 
 extern uint8_t mpuLSBData[22];                               // 14 (accel+temp+gyro) + 8 (magnetometer)
 extern int16_t AccXLSB, AccYLSB, AccZLSB;                    // Accelerometer values in LSB
-extern int16_t GyroPitchLSB, GyroRollLSB, GyroYawLSB;                         // Gyroscope values in LSB
-extern float magX, magY, magZ;                             // Magnetometer values in LSB                  // in g
+extern int16_t GyroPitchLSB, GyroRollLSB, GyroYawLSB;        // Gyroscope values in LSB
+extern float magX, magY, magZ;                               // Magnetometer values in LSB                  // in g
 extern float AccX, AccY, AccZ;                               // Accelerometer values in g
 extern float AngleRoll, AnglePitch, AngleYaw;                // Euler angles in degrees
 extern float RateRoll, RatePitch, RateYaw;                   // Gyro rates in degrees per second
@@ -26,3 +26,4 @@ void updateIMUData();
 void calibrateIMU();
 void updateAttitude();
 void setupMPU9250();
+void setupMadgwickFilter();

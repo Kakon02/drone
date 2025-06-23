@@ -15,10 +15,10 @@ constexpr uint8_t MPU_GYRO_LSB = 131;
 constexpr uint8_t SCLK_PIN = 12;
 constexpr uint8_t MISO_PIN = 13;
 constexpr uint8_t MOSI_PIN = 11;
-constexpr uint8_t MPU_CS = 10;
+constexpr uint8_t MPU_CS = 35;
 constexpr uint8_t MPU_INT = 4;
 constexpr uint8_t NRF_CE = 38;
-constexpr uint8_t NRF_CS = 37;
+constexpr uint8_t NRF_CS = 0;
 constexpr uint8_t NRF_INT = 6;
 constexpr uint8_t AK8963_CNTL1 = 0x0A;
 constexpr uint8_t AK8963_ADDRESS = 0x0C;
@@ -49,3 +49,6 @@ namespace RatePID
   constexpr float KI_YAW = 12.0f;
   constexpr float KD_YAW = 0.0f;
 }
+
+void initSharedSPI();
+void boardSetup();
